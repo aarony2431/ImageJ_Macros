@@ -3,7 +3,7 @@
 // July 12, 2022
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////
-function identifyMuscleSection(openImageName, isCropped, originalImageName) {
+function identifyMuscleSection(openImageName, isCropped, originalImageName, override) {
 //	selectWindow(openImageName);
 //	run("Duplicate...", "title=[Fiber Temp]");
 //	selectWindow("Fiber Temp");
@@ -22,31 +22,37 @@ function identifyMuscleSection(openImageName, isCropped, originalImageName) {
 	selectWindow(openImageName);
 	run("Duplicate...", "title=[Fiber Identification]");
 	selectWindow("Fiber Identification");
-	getStatistics(area, mean, min, max, std, histogram);
-	minArea = 0.05 * area;
-	run("Enhance Contrast...", "saturated=10 normalize equalize");
-	run("Gaussian Blur...", "sigma=2");
-	run("Enhance Contrast...", "saturated=1 normalize");
-	run("Subtract Background...", "rolling=20");
-	if (!isCropped) {
-		run("Gaussian Blur...", "sigma=10");
-		run("Subtract Background...", "rolling=50");
+	if (!override) {
+		getStatistics(area, mean, min, max, std, histogram);
+		minArea = 0.05 * area;
+		run("Enhance Contrast...", "saturated=10 normalize equalize");
+		run("Gaussian Blur...", "sigma=2");
+		run("Enhance Contrast...", "saturated=1 normalize");
+		run("Subtract Background...", "rolling=20");
+		if (!isCropped) {
+			run("Gaussian Blur...", "sigma=10");
+			run("Subtract Background...", "rolling=50");
+		}
+		getStatistics(area, mean, min, max, std, histogram);
+		if (!isCropped) {
+			ThresholdF = mean + std / 3.0;
+		}
+		else {
+			ThresholdF = mean;
+		}
+		run("Find Maxima...", "noise=ThresholdF output=[Segmented Particles] light");
+	} else {
+		getStatistics(area, mean, min, max, std, histogram);
+		run("Find Maxima...", "noise=mean output=[Segmented Particles] light");
 	}
-	getStatistics(area, mean, min, max, std, histogram);
-	if (!isCropped) {
-		ThresholdF = mean + std / 3.0;
-	}
-	else {
-		ThresholdF = mean;
-	}
-	run("Find Maxima...", "noise=ThresholdF output=[Segmented Particles] light");
 	
 	selectWindow("Fiber Identification Segmented");
 	run("Invert");
 	run("Options...", "iterations=2 count=1 black do=Dilate");
 	run("Options...", "iterations=3 count=1 black do=Close");
 	run("Fill Holes");
-	run("Analyze Particles...", "size=minArea-Infinity add display clear");
+//	run("Analyze Particles...", "size=minArea-Infinity add display clear");
+	run("Analyze Particles...", "size=0-Infinity add display clear");
 	
 	multiselect = Array.getSequence(roiManager("count"));
 	roiManager("select", multiselect);
@@ -192,6 +198,8 @@ Dialog.addChoice("Image Magnification", newArray("10", "20", "40"), "20");
 
 Dialog.addChoice("Full Muscle Section?", newArray("Entire", "Cropped"), "Entire");
 
+Dialog.addCheckbox("Override image preprocessing and just threshold?", false);
+
 items = newArray("RGB TIFF","Stacked TIFF by channel");
 Dialog.addRadioButtonGroup("Data Format", items, 1, 2, "RGB TIFF");
 
@@ -202,6 +210,7 @@ Dots_per_micron_10X = 1.5383975603;
 dpm = Dots_per_micron_10X * parseInt(Dialog.getChoice()) / 10;
 
 isCropped = (Dialog.getChoice() == "Cropped");
+imageprocessingoverride = Dialog.getCheckbox();
 isRGBTIFF = (Dialog.getRadioButton() == "RGB TIFF");
 
 //Second Dialog for image channels
@@ -287,7 +296,7 @@ for (filenumber = 0; filenumber < inputFiles.length; filenumber++) {
 			fiberTitle = imageName + add_on + fiberChannel;
 		}
 		
-		wholeMuscleROI = identifyMuscleSection(fiberTitle, isCropped, imageName);
+		wholeMuscleROI = identifyMuscleSection(fiberTitle, isCropped, imageName, imageprocessingoverride);
 		dotsROI = identifyDots(dotTitle, isCropped, imageName, wholeMuscleROI, thresholds[0], thresholds[1]);
 		
 		dotStats = getDotStatistics(dotTitle, wholeMuscleROI, dotsROI, imageName);
